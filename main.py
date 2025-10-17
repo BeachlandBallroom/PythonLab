@@ -1,137 +1,76 @@
-"""
-main.py
-
-Пример лабораторной работы по курсу "Технологии программирования на Python".
-
-Модуль предназначен для демонстрации работы с обработкой изображений с помощью библиотеки OpenCV.
-Реализован консольный интерфейс для применения различных методов обработки к изображению:
-- обнаружение границ (edges)
-- обнаружение углов (corners)
-- обнаружение окружностей (circles)
-
-Запуск:
-    python main.py <метод> <путь_к_изображению> [-o путь_для_сохранения]
-
-Аргументы:
-    метод: edges | corners | circles
-    путь_к_изображению: путь к входному изображению
-    -o, --output: путь для сохранения результата (по умолчанию: <имя_входного_файла>_result.png)
-
-Пример:
-    python main.py edges input.jpg
-    python main.py corners input.jpg -o corners_result.png
-
-Автор: [Ваше имя]
-"""
-
 import argparse
 import os
-import numpy as np
+import sys
 
-import cv2
+def run_lab1():
+    from main1 import main as lab1_main
+    lab1_main()
 
-from implementation import ImageProcessing
+def run_lab2(limit: int = 1):
+    from dogs.dog_image_processor import DogImageProcessor
+    
+    print("Обработка изображений собак через Dog API\n")
+    
+    # Создаем процессор
+    processor = DogImageProcessor()
+    
+    # Выполняем все этапы
+    processor.download_images(limit)
+    processor.process_all_images()
+    processor.save_all_images()
 
-def main() -> None:
+    print(f"Обработано {len(processor.images)} изображений собак")
+
+def main():
     parser = argparse.ArgumentParser(
-        description="Обработка изображения с помощью методов ImageProcessing (OpenCV).",
+        description="Лабораторные работы по обработке изображений",
     )
-    parser.add_argument(
+    
+    subparsers = parser.add_subparsers(dest='command', help='Доступные команды')
+    
+    # Парсер для lab1
+    lab1_parser = subparsers.add_parser('lab1', help='Лабораторная работа №1 - обработка одного изображения')
+    lab1_parser.add_argument(
         "method",
         choices=[
-            "edges",
-            "corners",
-            "circles",
-            "rgb",
-            "gamma",
-            "convolution",
-            "edges2",
-            "corners2",
-            "rgb2",
-            "gamma2",
-            "convolution2",
+            "edges", "corners", "circles", "rgb", "gamma", "convolution",
+            "edges2", "corners2", "rgb2", "gamma2", "convolution2",
         ],
-        help="Метод обработки: edges, corners, circles, rgb, gamma, convolution",
+        help="Метод обработки",
     )
-    parser.add_argument(
+    lab1_parser.add_argument(
         "input",
         help="Путь к входному изображению",
     )
-    parser.add_argument(
+    lab1_parser.add_argument(
         "-o", "--output",
-        help="Путь для сохранения результата (по умолчанию: <input>_result.png)",
+        help="Путь для сохранения результата",
     )
-
+    
+    # Парсер для lab2
+    lab2_parser = subparsers.add_parser('lab2', help='Лабораторная работа №2 - обработка изображений собак через Dog API')
+    lab2_parser.add_argument(
+        "limit",
+        nargs="?",
+        type=int,
+        default=1,
+        help="Количество изображений для загрузки (по умолчанию: 1)",
+    )
+    
     args = parser.parse_args()
-
-    # Загрузка изображения
-    image = cv2.imread(args.input)
-    if image is None:
-        print(f"Ошибка: не удалось загрузить изображение {args.input}")
-        return
-
-    processor = ImageProcessing()
-
-    # Выбор метода
-    if args.method == "edges":
-        result = processor.edge_detection(image)
-    elif args.method == "corners":
-        result = processor.corner_detection(image)
-    elif args.method == "circles":
-        result = processor.circle_detection(image)
-    elif args.method == "rgb":
-        result = processor._rgb_to_grayscale(image)
-    elif args.method == "gamma":
-        gamma = float(input("Введите значение γ (>0): "))
-        result = processor._gamma_correction(image, gamma)
-    elif args.method == "convolution":
-        size = int(input("Введите размер ядра (например 3): "))
-        print("Введите ядро построчно, через пробел:")
-        kernel = []
-        for _ in range(size):
-            row = list(map(float, input().split()))
-            if len(row) != size:
-                print("Ошибка: каждая строка должна содержать ровно", size, "чисел")
-                return
-            kernel.append(row)
-        kernel = np.array(kernel)
-        result = processor._convolution2(image, kernel)
-    elif args.method == "edges2":
-        result = processor.edge_detection2(image)
-    elif args.method == "corners2":
-        result = processor.corner_detection2(image)
-    elif args.method == "rgb2":
-        result = processor._rgb_to_grayscale2(image)
-    elif args.method == "gamma2":
-        gamma = float(input("Введите значение γ (>0): "))
-        result = processor._gamma_correction2(image, gamma)
-    elif args.method == "convolution2":
-        size = int(input("Введите размер ядра (например 3): "))
-        print("Введите ядро построчно, через пробел:")
-        kernel = []
-        for _ in range(size):
-            row = list(map(float, input().split()))
-            if len(row) != size:
-                print("Ошибка: каждая строка должна содержать ровно", size, "чисел")
-                return
-            kernel.append(row)
-        kernel = np.array(kernel)
-        result = processor._convolution2(image, kernel)
+    
+    if args.command == 'lab1':
+        # Сохраняем аргументы для lab1 и запускаем
+        sys.argv = [sys.argv[0], args.method, args.input]
+        if args.output:
+            sys.argv.extend(['-o', args.output])
+        run_lab1()
+    
+    elif args.command == 'lab2':
+        run_lab2(args.limit)
+    
     else:
-        print("Ошибка: неизвестный метод")
-        return
-
-    # Определение пути для сохранения
-    if args.output:
-        output_path = args.output
-    else:
-        base, ext = os.path.splitext(args.input)
-        output_path = f"{base}_result.png"
-
-    # Сохранение результата
-    cv2.imwrite(output_path, result)
-    print(f"Результат сохранён в {output_path}")
-
+        parser.print_help()
 
 if __name__ == "__main__":
     main()

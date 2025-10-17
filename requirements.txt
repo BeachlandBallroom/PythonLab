@@ -1,0 +1,5 @@
+# requirements.txt
+requests
+numpy
+opencv-python
+python-dotenv
