@@ -104,7 +104,6 @@ class ImageProcessing(interfaces.IImageProcessing):
         corrected = np.power(norm, inv_gamma) * 255.0
         return np.clip(corrected, 0, 255).astype(np.uint8)
     
-
     def _gaussian_kernel(self, size: int, sigma: float) -> np.ndarray:
         """Гауссово окно (2D)."""
         ax = np.linspace(-(size//2), size//2, size)

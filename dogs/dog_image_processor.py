@@ -20,7 +20,7 @@ def timer_decorator(func):
     return wrapper
 
 class DogImageProcessor:
-    def __init__(self, api_url: str = "https://api.thedogapi.com/v1/images/search"):
+    def __init__(self, api_url: str = os.getenv("DOG_URL")):
         self._api_url = api_url
         self._api_key = os.getenv("DOG_API_KEY")
         self._images: List = []
@@ -81,11 +81,41 @@ class DogImageProcessor:
             print(f"Обработка изображения {i+1}: {image.breed}")
             
             image.process_image("edges_custom")
-            
             image.process_image("edges_library")
             
             if isinstance(image, ColorDogImage):
                 image.process_image("grayscale_library")
+        
+        self._perform_arithmetic_operations()
+
+    @timer_decorator
+    def _perform_arithmetic_operations(self) -> None:
+        print("Выполнение арифметических операций над изображениями...")
+        
+        if len(self._images) < 2:
+            print("Недостаточно изображений для арифметических операций (нужно минимум 2)")
+            return
+        
+        for i in range(len(self._images) - 1):
+            try:
+                added_image = self._images[i] + self._images[i + 1]
+                added_image._breed = f"added_{self._images[i].breed}_and_{self._images[i + 1].breed}"
+                self._images.append(added_image)
+                print(f"Создано сложенное изображение: {added_image.breed}")
+            except Exception as e:
+                print(f"Ошибка при сложении изображений {i} и {i+1}: {e}")
+        
+        for i in range(len(self._images) - 1):
+            try:
+                original_images = [img for img in self._images if not img.breed.startswith(('added_', 'subtracted_'))]
+                
+                if i < len(original_images) - 1:
+                    subtracted_image = original_images[i] - original_images[i + 1]
+                    subtracted_image._breed = f"subtracted_{original_images[i].breed}_from_{original_images[i + 1].breed}"
+                    self._images.append(subtracted_image)
+                    print(f"Создано вычтенное изображение: {subtracted_image.breed}")
+            except Exception as e:
+                print(f"Ошибка при вычитании изображений {i} и {i+1}: {e}")
     
     @timer_decorator
     def save_all_images(self, base_dir: str = "dog_images") -> None:
@@ -96,9 +126,10 @@ class DogImageProcessor:
         for i, image in enumerate(self._images):
             breed_safe = "".join(c if c.isalnum() else "_" for c in image.breed)
             
-            original_path = os.path.join(base_dir, f"{i+1:02d}_{breed_safe}_original.png")
-            cv2.imwrite(original_path, image.image_data)
-            print(f"Сохранено оригинальное изображение: {original_path}")
+            if not image.breed.startswith(('added_', 'subtracted_', 'combined_')):
+                original_path = os.path.join(base_dir, f"{i+1:02d}_{breed_safe}_original.png")
+                cv2.imwrite(original_path, image.image_data)
+                print(f"Сохранено оригинальное изображение: {original_path}")
             
             for method, processed_image in image.processed_images.items():
                 method_safe = method.replace('_', '')
@@ -108,3 +139,8 @@ class DogImageProcessor:
                 )
                 cv2.imwrite(processed_path, processed_image)
                 print(f"Сохранено обработанное изображение: {processed_path}")
+            
+            if image.breed.startswith(('added_', 'subtracted_', 'combined_')):
+                arithmetic_path = os.path.join(base_dir, f"{i+1:02d}_{breed_safe}_arithmetic.png")
+                cv2.imwrite(arithmetic_path, image.image_data)
+                print(f"Сохранено арифметическое изображение: {arithmetic_path}")
