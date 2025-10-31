@@ -21,19 +21,10 @@ class WeatherAnalyzer:
         
         print(f"Всего строк: {len(all_data)}")
         print(f"Всего штатов: {all_data['Station.State'].nunique()}")
-        print(f"Штаты: {all_data['Station.State'].unique().tolist()}")
-        print(f"Города: {all_data['Station.City'].unique().tolist()}")
-        print(f"Даты: {all_data['Date.Full'].unique().tolist()}")
+        print(f"Штаты: {sorted(all_data['Station.State'].unique().tolist())}")
+        print(f"Города: {sorted(all_data['Station.City'].unique().tolist())}")
+        print(f"Даты: {sorted(all_data['Date.Full'].unique().tolist())}")
         print(f"Диапазон дат: {all_data['Date.Full'].min()} - {all_data['Date.Full'].max()}")
-        
-        # Статистика по штатам
-        state_stats = all_data.groupby('Station.State').agg({
-            'Data.Temperature.Avg Temp': ['count', 'mean', 'min', 'max'],
-            'Data.Precipitation': ['mean', 'sum']
-        }).round(2)
-        
-        print("\nСтатистика по штатам:")
-        print(state_stats)
         
         return all_data
         
@@ -71,7 +62,7 @@ class WeatherAnalyzer:
 
     # Задание 1: Агрегация данных - средняя температура
     def task1_aggregation(self):
-        """Агрегация средней температуры по городам (так как данных по штатам мало)"""
+        """Агрегация средней температуры по городам"""
         print("Задание 1: Агрегация средней температуры по городам")
         
         pipeline = self.csv_reader()
@@ -105,10 +96,22 @@ class WeatherAnalyzer:
             return city_temp
         return None
 
-    # Задание 2: Дисперсия и доверительный интервал для осадков
-    def task2_confidence_interval(self):
-        """Дисперсия и доверительный интервал для осадков по городам"""
+    # Задание 2: Дисперсия и доверительный интервал для осадков по конкретному штату
+    def task2_confidence_interval(self, state_name=None):
+        """Дисперсия и доверительный интервал для осадков по городам выбранного штата"""
         print("\nЗадание 2: Дисперсия и доверительный интервал для осадков")
+        
+        # Получаем список штатов
+        all_data = pd.concat([chunk for chunk in self.csv_reader()])
+        available_states = sorted(all_data['Station.State'].unique().tolist())
+        
+        if state_name is None:
+            print("Доступные штаты:", available_states)
+            state_name = input("Введите название штата: ").strip()
+        
+        if state_name not in available_states:
+            print(f"Штат '{state_name}' не найден. Доступные штаты: {available_states}")
+            return None
         
         pipeline = self.csv_reader()
         pipeline = self.data_extractor(pipeline, ['Station.City', 'Station.State', 'Data.Precipitation'])
@@ -120,9 +123,15 @@ class WeatherAnalyzer:
         
         if all_data:
             full_data = pd.concat(all_data)
+            # Фильтруем по выбранному штату
+            state_data = full_data[full_data['Station.State'] == state_name]
             
-            # Группируем по городам
-            city_stats = full_data.groupby(['Station.City', 'Station.State']).agg({
+            if state_data.empty:
+                print(f"Нет данных для штата {state_name}")
+                return None
+            
+            # Группируем по городам выбранного штата
+            city_stats = state_data.groupby('Station.City').agg({
                 'Data.Precipitation': ['mean', 'std', 'count']
             }).round(4)
             
@@ -143,11 +152,10 @@ class WeatherAnalyzer:
                     
                     results.append({
                         'City': row['Station.City'],
-                        'State': row['Station.State'],
                         'Mean': mean,
                         'Std': std,
                         'Margin_Error': margin_error,
-                        'CI_Lower': max(0, mean - margin_error),  # Осадки не могут быть отрицательными
+                        'CI_Lower': max(0, mean - margin_error),
                         'CI_Upper': mean + margin_error,
                         'Count': n
                     })
@@ -156,7 +164,7 @@ class WeatherAnalyzer:
                 results_df = pd.DataFrame(results).sort_values('Mean', ascending=False)
                 
                 # Визуализация
-                plt.figure(figsize=(15, 8))
+                plt.figure(figsize=(12, 6))
                 x_pos = np.arange(len(results_df))
                 
                 plt.bar(x_pos, results_df['Mean'], yerr=results_df['Margin_Error'], 
@@ -164,15 +172,15 @@ class WeatherAnalyzer:
                 
                 plt.xlabel('Город')
                 plt.ylabel('Среднее количество осадков')
-                plt.title('Доверительные интервалы для осадков по городам')
-                plt.xticks(x_pos, [f"{row['City']}\n({row['State']})" for _, row in results_df.iterrows()], rotation=45, ha='right')
+                plt.title(f'Доверительные интервалы для осадков по городам штата {state_name}')
+                plt.xticks(x_pos, results_df['City'], rotation=45, ha='right')
                 plt.legend()
                 plt.tight_layout()
                 plt.show()
                 
-                print("Города с доверительными интервалами для осадков:")
+                print(f"Города штата {state_name} с доверительными интервалами для осадков:")
                 for _, row in results_df.iterrows():
-                    print(f"{row['City']}, {row['State']}: {row['Mean']:.3f} ± {row['Margin_Error']:.3f}")
+                    print(f"{row['City']}: {row['Mean']:.3f} ± {row['Margin_Error']:.3f}")
                 
                 return results_df
             else:
@@ -180,10 +188,22 @@ class WeatherAnalyzer:
                 return None
         return None
 
-    # Задание 3: Изменение температуры во времени и скользящее среднее
-    def task3_moving_average(self):
-        """Изменение температуры во времени со скользящим средним"""
+    # Задание 3: Изменение температуры во времени для конкретного города
+    def task3_moving_average(self, city_name=None):
+        """Изменение температуры во времени со скользящим средним для выбранного города"""
         print("\nЗадание 3: Изменение температуры во времени и скользящее среднее")
+        
+        # Получаем список городов
+        all_data = pd.concat([chunk for chunk in self.csv_reader()])
+        available_cities = sorted(all_data['Station.City'].unique().tolist())
+        
+        if city_name is None:
+            print("Доступные города:", available_cities)
+            city_name = input("Введите название города: ").strip()
+        
+        if city_name not in available_cities:
+            print(f"Город '{city_name}' не найден. Доступные города: {available_cities}")
+            return None
         
         pipeline = self.csv_reader()
         pipeline = self.data_extractor(pipeline, ['Date.Full', 'Data.Temperature.Avg Temp', 'Station.City', 'Station.State'])
@@ -196,45 +216,38 @@ class WeatherAnalyzer:
         if all_data:
             full_data = pd.concat(all_data)
             
-            # Анализируем несколько городов для сравнения
-            cities_to_analyze = full_data['Station.City'].value_counts().head(3).index.tolist()
+            # Фильтруем по выбранному городу
+            city_data = full_data[full_data['Station.City'] == city_name].copy()
             
-            plt.figure(figsize=(15, 10))
+            if city_data.empty:
+                print(f"Нет данных для города {city_name}")
+                return None
             
-            for i, city in enumerate(cities_to_analyze, 1):
-                city_data = full_data[full_data['Station.City'] == city].copy()
-                city_data['Date.Full'] = pd.to_datetime(city_data['Date.Full'])
-                city_data = city_data.sort_values('Date.Full')
-                city_data['Moving_Avg'] = city_data['Data.Temperature.Avg Temp'].rolling(window=3, min_periods=1).mean()
-                
-                plt.subplot(2, 2, i)
-                plt.plot(city_data['Date.Full'], city_data['Data.Temperature.Avg Temp'], 
-                        alpha=0.5, label='Ежедневная температура', color='lightblue', marker='o', markersize=4)
-                plt.plot(city_data['Date.Full'], city_data['Moving_Avg'], 
-                        linewidth=2, label='Скользящее среднее (3 дня)', color='red')
-                
-                state = city_data['Station.State'].iloc[0]
-                plt.title(f'{city}, {state}')
-                plt.xlabel('Дата')
-                plt.ylabel('Температура (°F)')
-                plt.legend()
-                plt.grid(True, alpha=0.3)
-                plt.xticks(rotation=45)
+            city_data['Date.Full'] = pd.to_datetime(city_data['Date.Full'])
+            city_data = city_data.sort_values('Date.Full')
+            city_data['Moving_Avg'] = city_data['Data.Temperature.Avg Temp'].rolling(window=3, min_periods=1).mean()
             
+            # Визуализация
+            plt.figure(figsize=(12, 6))
+            plt.plot(city_data['Date.Full'], city_data['Data.Temperature.Avg Temp'], 
+                    alpha=0.5, label='Ежедневная температура', color='lightblue', marker='o', markersize=6)
+            plt.plot(city_data['Date.Full'], city_data['Moving_Avg'], 
+                    linewidth=2, label='Скользящее среднее (3 дня)', color='red')
+            
+            state = city_data['Station.State'].iloc[0]
+            plt.title(f'Изменение температуры в {city_name}, {state}')
+            plt.xlabel('Дата')
+            plt.ylabel('Температура (°F)')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            plt.xticks(rotation=45)
             plt.tight_layout()
             plt.show()
             
-            # Детальный анализ для одного города
-            main_city = cities_to_analyze[0]
-            main_city_data = full_data[full_data['Station.City'] == main_city].copy()
-            main_city_data['Date.Full'] = pd.to_datetime(main_city_data['Date.Full'])
-            main_city_data = main_city_data.sort_values('Date.Full')
-            main_city_data['Moving_Avg'] = main_city_data['Data.Temperature.Avg Temp'].rolling(window=3, min_periods=1).mean()
+            print(f"\nДетальный анализ для {city_name}:")
+            print(city_data[['Date.Full', 'Data.Temperature.Avg Temp', 'Moving_Avg']].round(1))
             
-            print(f"\nДетальный анализ для {main_city}:")
-            print(main_city_data[['Date.Full', 'Data.Temperature.Avg Temp', 'Moving_Avg']].round(1))
-            
-            return main_city_data
+            return city_data
         return None
 
     # Дополнительное задание: работа с Parquet
@@ -275,7 +288,7 @@ class WeatherAnalyzer:
         return csv_time, parquet_time if os.path.exists(self.parquet_file) else 0
     
     def parquet_additional_analysis(self):
-        """Дополнительный анализ с использованием Parquet"""
+        """Дополнительный анализ с использованием Parquet - агрегированные данные"""
         print("\nДополнительный анализ с Parquet:")
         
         if not os.path.exists(self.parquet_file):
@@ -287,64 +300,91 @@ class WeatherAnalyzer:
         table = pq.read_table(self.parquet_file, columns=columns_to_read)
         data = table.to_pandas()
         
+        # Агрегируем данные по городам (средние значения)
+        aggregated_data = data.groupby(['Station.City', 'Station.State']).agg({
+            'Data.Temperature.Avg Temp': 'mean',
+            'Data.Precipitation': 'mean'
+        }).reset_index()
+        
+        print(f"Агрегированные данные по {len(aggregated_data)} городам")
+        
         # Анализ: температура vs осадки по штатам
-        plt.figure(figsize=(12, 8))
+        plt.figure(figsize=(14, 8))
         
-        colors = plt.cm.Set1(np.linspace(0, 1, len(data['Station.State'].unique())))
-        color_map = {state: color for state, color in zip(data['Station.State'].unique(), colors)}
+        # Получаем уникальные штаты
+        states = aggregated_data['Station.State'].unique()
+        colors = plt.cm.Set3(np.linspace(0, 1, len(states)))
+        color_map = {state: color for state, color in zip(states, colors)}
         
-        for state in data['Station.State'].unique():
-            state_data = data[data['Station.State'] == state]
-            plt.scatter(state_data['Data.Temperature.Avg Temp'], state_data['Data.Precipitation'], 
-                       alpha=0.6, c=[color_map[state]], label=state, s=50)
+        # Создаем scatter plot для каждого штата
+        for state in states:
+            state_data = aggregated_data[aggregated_data['Station.State'] == state]
+            plt.scatter(state_data['Data.Temperature.Avg Temp'], 
+                       state_data['Data.Precipitation'], 
+                       alpha=0.7, 
+                       c=[color_map[state]], 
+                       label=state, 
+                       s=80,  # Размер точек
+                       edgecolors='black',  # Черная обводка
+                       linewidth=0.5)
+            
+            # Добавляем подписи для некоторых точек (крупнейшие города)
+            if len(state_data) > 0:
+                # Подписываем город с максимальными осадками
+                max_precip_city = state_data.loc[state_data['Data.Precipitation'].idxmax()]
+                plt.annotate(max_precip_city['Station.City'], 
+                            (max_precip_city['Data.Temperature.Avg Temp'], max_precip_city['Data.Precipitation']),
+                            xytext=(5, 5), textcoords='offset points', fontsize=8, alpha=0.8)
         
-        plt.colorbar(label='Температура (°F)')
-        plt.xlabel('Средняя температура (°F)')
-        plt.ylabel('Осадки')
-        plt.title('Зависимость между температурой и осадками по штатам')
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.xlabel('Средняя температура (°F)', fontsize=12)
+        plt.ylabel('Средние осадки', fontsize=12)
+        plt.title('Зависимость между средней температурой и осадками по городам', fontsize=14, pad=20)
+        
+        # Размещаем легенду
+        n_states = len(states)
+        n_cols = 2 if n_states > 8 else 1
+        
+        plt.legend(bbox_to_anchor=(1.05, 1), 
+                   loc='upper left', 
+                   borderaxespad=0.,
+                   fontsize=10,
+                   ncol=n_cols,
+                   title='Штаты')
+        
         plt.grid(True, alpha=0.3)
+        
+        # Добавляем линию тренда
+        z = np.polyfit(aggregated_data['Data.Temperature.Avg Temp'], aggregated_data['Data.Precipitation'], 1)
+        p = np.poly1d(z)
+        x_range = np.linspace(aggregated_data['Data.Temperature.Avg Temp'].min(), 
+                             aggregated_data['Data.Temperature.Avg Temp'].max(), 100)
+        plt.plot(x_range, p(x_range), "r--", alpha=0.8, linewidth=2, label='Линия тренда')
+        
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10, ncol=n_cols, title='Штаты')
         plt.tight_layout()
         plt.show()
         
-        # Корреляция
-        correlation = data['Data.Temperature.Avg Temp'].corr(data['Data.Precipitation'])
-        print(f"Общая корреляция между температурой и осадками: {correlation:.3f}")
+        # Статистический анализ
+        correlation = aggregated_data['Data.Temperature.Avg Temp'].corr(aggregated_data['Data.Precipitation'])
+        print(f"Корреляция между средней температурой и осадками: {correlation:.3f}")
         
-        return data
+        # Анализ выбросов
+        print("\nГорода с самыми высокими осадками:")
+        top_precip = aggregated_data.nlargest(5, 'Data.Precipitation')[['Station.City', 'Station.State', 'Data.Precipitation']]
+        print(top_precip.round(3))
+        
+        print("\nГорода с самой высокой температурой:")
+        top_temp = aggregated_data.nlargest(5, 'Data.Temperature.Avg Temp')[['Station.City', 'Station.State', 'Data.Temperature.Avg Temp']]
+        print(top_temp.round(1))
+        
+        return aggregated_data
 
-    def run_all_analysis(self):
-        """Запуск полного анализа"""
-        print("Начало анализа данных о погоде...")
-        print("="*60)
-        
-        # Сначала анализируем структуру данных
-        all_data = self.inspect_data()
-        
-        # Дополнительное задание: работа с Parquet
-        print("\n" + "="*60)
-        self.convert_to_parquet()
-        self.compare_read_speed()
-        
-        # Основные задания
-        print("\n" + "="*60)
-        result1 = self.task1_aggregation()
-        
-        print("\n" + "="*60)
-        result2 = self.task2_confidence_interval()
-        
-        print("\n" + "="*60)
-        result3 = self.task3_moving_average()
-        
-        # Дополнительный анализ с Parquet
-        print("\n" + "="*60)
-        parquet_result = self.parquet_additional_analysis()
-        
-        print("\n" + "="*60)
-        print("Анализ завершен!")
-        return {
-            'aggregation': result1,
-            'confidence_interval': result2,
-            'moving_average': result3,
-            'parquet_analysis': parquet_result
-        }
+    def get_available_states(self):
+        """Получить список доступных штатов"""
+        all_data = pd.concat([chunk for chunk in self.csv_reader()])
+        return sorted(all_data['Station.State'].unique().tolist())
+    
+    def get_available_cities(self):
+        """Получить список доступных городов"""
+        all_data = pd.concat([chunk for chunk in self.csv_reader()])
+        return sorted(all_data['Station.City'].unique().tolist())
