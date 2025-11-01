@@ -12,20 +12,6 @@ class WeatherAnalyzer:
         self.csv_file = csv_file
         self.parquet_file = 'weather.parquet'
         
-    def inspect_data(self):
-        """Детальный анализ структуры данных"""
-        print("Детальный анализ данных:")
-        
-        all_data = pd.concat([chunk for chunk in self.csv_reader()])
-        
-        print(f"Всего строк: {len(all_data)}")
-        print(f"Всего штатов: {all_data['Station.State'].nunique()}")
-        print(f"Штаты: {sorted(all_data['Station.State'].unique().tolist())}")
-        print(f"Города: {sorted(all_data['Station.City'].unique().tolist())}")
-        print(f"Диапазон дат: {all_data['Date.Full'].min()} - {all_data['Date.Full'].max()}")
-        
-        return all_data
-        
     def csv_reader(self, chunksize=1000):
         """Генератор для чтения CSV файла по частям"""
         for chunk in pd.read_csv(self.csv_file, chunksize=chunksize):
@@ -34,7 +20,6 @@ class WeatherAnalyzer:
     def data_extractor(self, data_stream, columns):
         """Генератор для извлечения нужных столбцов"""
         for chunk in data_stream:
-            # Проверяем, что столбцы существуют
             available_columns = [col for col in columns if col in chunk.columns]
             if available_columns:
                 yield chunk[available_columns]
@@ -54,7 +39,7 @@ class WeatherAnalyzer:
             full_data = pd.concat(all_data)
             
             city_temps = full_data.groupby(['Station.City', 'Station.State'])['Data.Temperature.Avg Temp'].agg(['mean', 'count']).reset_index()
-            city_temps = city_temps[city_temps['count'] >= 3]  # Фильтруем города с достаточным количеством данных
+            city_temps = city_temps[city_temps['count'] >= 3]
             
             highest_temps = city_temps.nlargest(3, 'mean')
             lowest_temps = city_temps.nsmallest(3, 'mean')
@@ -180,7 +165,7 @@ class WeatherAnalyzer:
             full_data = pd.concat(all_data)
             
             state_winds = full_data.groupby('Station.State')['Data.Wind.Speed'].agg(['mean', 'count']).reset_index()
-            state_winds = state_winds[state_winds['count'] >= 3]  # Фильтруем штаты с достаточным количеством данных
+            state_winds = state_winds[state_winds['count'] >= 3]
             
             windiest_state = state_winds.nlargest(1, 'mean').iloc[0]
             
@@ -241,7 +226,7 @@ class WeatherAnalyzer:
             state_correlations = []
             for state in clean_data['Station.State'].unique():
                 state_data = clean_data[clean_data['Station.State'] == state]
-                if len(state_data) >= 5:  # Минимум 5 наблюдений для корреляции
+                if len(state_data) >= 5:
                     corr = state_data['Data.Wind.Speed'].corr(state_data['Data.Precipitation'])
                     state_correlations.append({
                         'State': state,
@@ -311,7 +296,7 @@ class WeatherAnalyzer:
             }
             
         except Exception as e:
-            print(f"Ошибка при чтении Parquet файла: {e}")
+            print(f"{e}")
             return None
 
     def convert_to_parquet(self):
@@ -347,13 +332,3 @@ class WeatherAnalyzer:
             print("Parquet файл не найден")
         
         return csv_time, parquet_time if os.path.exists(self.parquet_file) else 0
-
-    def get_available_states(self):
-        """Получить список доступных штатов"""
-        all_data = pd.concat([chunk for chunk in self.csv_reader()])
-        return sorted(all_data['Station.State'].unique().tolist())
-    
-    def get_available_cities(self):
-        """Получить список доступных городов"""
-        all_data = pd.concat([chunk for chunk in self.csv_reader()])
-        return sorted(all_data['Station.City'].unique().tolist())
