@@ -16,14 +16,12 @@ class WeatherAnalyzer:
         """Детальный анализ структуры данных"""
         print("Детальный анализ данных:")
         
-        # Читаем все данные для анализа
         all_data = pd.concat([chunk for chunk in self.csv_reader()])
         
         print(f"Всего строк: {len(all_data)}")
         print(f"Всего штатов: {all_data['Station.State'].nunique()}")
         print(f"Штаты: {sorted(all_data['Station.State'].unique().tolist())}")
         print(f"Города: {sorted(all_data['Station.City'].unique().tolist())}")
-        print(f"Даты: {sorted(all_data['Date.Full'].unique().tolist())}")
         print(f"Диапазон дат: {all_data['Date.Full'].min()} - {all_data['Date.Full'].max()}")
         
         return all_data
@@ -40,217 +38,282 @@ class WeatherAnalyzer:
             available_columns = [col for col in columns if col in chunk.columns]
             if available_columns:
                 yield chunk[available_columns]
-    
-    def state_aggregator(self, data_stream):
-        """Генератор для агрегации данных по штатам"""
-        for chunk in data_stream:
-            if 'Station.State' in chunk.columns and 'Data.Temperature.Avg Temp' in chunk.columns:
-                aggregated = chunk.groupby('Station.State').agg({
-                    'Data.Temperature.Avg Temp': 'mean'
-                }).reset_index()
-                yield aggregated
-    
-    def city_aggregator(self, data_stream):
-        """Генератор для агрегации данных по городам"""
-        for chunk in data_stream:
-            if 'Station.City' in chunk.columns and 'Data.Temperature.Avg Temp' in chunk.columns:
-                aggregated = chunk.groupby('Station.City').agg({
-                    'Data.Temperature.Avg Temp': 'mean',
-                    'Station.State': 'first'
-                }).reset_index()
-                yield aggregated
 
-    # Задание 1: Агрегация данных - средняя температура
-    def task1_aggregation(self):
-        """Агрегация средней температуры по городам"""
-        print("Задание 1: Агрегация средней температуры по городам")
+    def task1_extreme_temperatures(self):
+        """3 локации с самой высокой и 3 с самой низкой среднегодовой температурой"""
+        print("Задание 1: Локации с экстремальными температурами")
         
         pipeline = self.csv_reader()
         pipeline = self.data_extractor(pipeline, ['Station.City', 'Station.State', 'Data.Temperature.Avg Temp'])
-        pipeline = self.city_aggregator(pipeline)
         
-        # Собираем все данные
-        all_aggregated = []
-        for aggregated in pipeline:
-            all_aggregated.append(aggregated)
-        
-        if all_aggregated:
-            final_result = pd.concat(all_aggregated)
-            # Группируем по городам
-            city_temp = final_result.groupby(['Station.City', 'Station.State'])['Data.Temperature.Avg Temp'].mean().sort_values(ascending=False)
-            
-            # Визуализация
-            plt.figure(figsize=(15, 8))
-            city_temp.head(20).plot(kind='bar', color='skyblue')
-            plt.title('Средняя температура по городам (Топ-20)')
-            plt.xlabel('Город, Штат')
-            plt.ylabel('Средняя температура (°F)')
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            plt.show()
-            
-            print("Топ-10 городов по средней температуре:")
-            for (city, state), temp in city_temp.head(10).items():
-                print(f"{city}, {state}: {temp:.1f}°F")
-            
-            return city_temp
-        return None
-
-    # Задание 2: Дисперсия и доверительный интервал для осадков по конкретному штату
-    def task2_confidence_interval(self, state_name=None):
-        """Дисперсия и доверительный интервал для осадков по городам выбранного штата"""
-        print("\nЗадание 2: Дисперсия и доверительный интервал для осадков")
-        
-        # Получаем список штатов
-        all_data = pd.concat([chunk for chunk in self.csv_reader()])
-        available_states = sorted(all_data['Station.State'].unique().tolist())
-        
-        if state_name is None:
-            print("Доступные штаты:", available_states)
-            state_name = input("Введите название штата: ").strip()
-        
-        if state_name not in available_states:
-            print(f"Штат '{state_name}' не найден. Доступные штаты: {available_states}")
-            return None
-        
-        pipeline = self.csv_reader()
-        pipeline = self.data_extractor(pipeline, ['Station.City', 'Station.State', 'Data.Precipitation'])
-        
-        # Собираем все данные
         all_data = []
         for chunk in pipeline:
             all_data.append(chunk)
         
         if all_data:
             full_data = pd.concat(all_data)
-            # Фильтруем по выбранному штату
-            state_data = full_data[full_data['Station.State'] == state_name]
             
-            if state_data.empty:
-                print(f"Нет данных для штата {state_name}")
+            city_temps = full_data.groupby(['Station.City', 'Station.State'])['Data.Temperature.Avg Temp'].agg(['mean', 'count']).reset_index()
+            city_temps = city_temps[city_temps['count'] >= 3]  # Фильтруем города с достаточным количеством данных
+            
+            highest_temps = city_temps.nlargest(3, 'mean')
+            lowest_temps = city_temps.nsmallest(3, 'mean')
+            
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+            
+            bars1 = ax1.bar(range(len(highest_temps)), highest_temps['mean'], color='red', alpha=0.7)
+            ax1.set_title('3 локации с самой высокой температурой')
+            ax1.set_xlabel('Локация')
+            ax1.set_ylabel('Средняя температура (°F)')
+            ax1.set_xticks(range(len(highest_temps)))
+            ax1.set_xticklabels([f"{row['Station.City']}\n{row['Station.State']}" for _, row in highest_temps.iterrows()], rotation=45)
+            
+            for i, bar in enumerate(bars1):
+                height = bar.get_height()
+                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                        f'{height:.1f}°F', ha='center', va='bottom')
+            
+            bars2 = ax2.bar(range(len(lowest_temps)), lowest_temps['mean'], color='blue', alpha=0.7)
+            ax2.set_title('3 локации с самой низкой температурой')
+            ax2.set_xlabel('Локация')
+            ax2.set_ylabel('Средняя температура (°F)')
+            ax2.set_xticks(range(len(lowest_temps)))
+            ax2.set_xticklabels([f"{row['Station.City']}\n{row['Station.State']}" for _, row in lowest_temps.iterrows()], rotation=45)
+            
+            for i, bar in enumerate(bars2):
+                height = bar.get_height()
+                ax2.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                        f'{height:.1f}°F', ha='center', va='bottom')
+            
+            plt.tight_layout()
+            plt.show()
+            
+            print("\n3 локации с самой высокой температурой:")
+            for _, row in highest_temps.iterrows():
+                print(f"{row['Station.City']}, {row['Station.State']}: {row['mean']:.1f}°F")
+            
+            print("\n3 локации с самой низкой температурой:")
+            for _, row in lowest_temps.iterrows():
+                print(f"{row['Station.City']}, {row['Station.State']}: {row['mean']:.1f}°F")
+            
+            return {'highest': highest_temps, 'lowest': lowest_temps}
+        return None
+
+    def task2_temperature_variability(self):
+        """3 штата с самым высоким и 3 с самым низким разбросом среднемесячных температур"""
+        print("\nЗадание 2: Штаты с наибольшим и наименьшим разбросом температур")
+        
+        pipeline = self.csv_reader()
+        pipeline = self.data_extractor(pipeline, ['Station.State', 'Date.Full', 'Data.Temperature.Avg Temp'])
+        
+        all_data = []
+        for chunk in pipeline:
+            all_data.append(chunk)
+        
+        if all_data:
+            full_data = pd.concat(all_data)
+            
+            full_data['Date.Full'] = pd.to_datetime(full_data['Date.Full'])
+            full_data['Month'] = full_data['Date.Full'].dt.month
+            
+            monthly_temps = full_data.groupby(['Station.State', 'Month'])['Data.Temperature.Avg Temp'].mean().reset_index()
+            
+            temp_variability = monthly_temps.groupby('Station.State')['Data.Temperature.Avg Temp'].std().reset_index()
+            temp_variability.columns = ['Station.State', 'Temperature_Std']
+            temp_variability = temp_variability.dropna()
+            
+            highest_variability = temp_variability.nlargest(3, 'Temperature_Std')
+            lowest_variability = temp_variability.nsmallest(3, 'Temperature_Std')
+            
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+            
+            bars1 = ax1.bar(range(len(highest_variability)), highest_variability['Temperature_Std'], color='orange', alpha=0.7)
+            ax1.set_title('3 штата с наибольшим разбросом температур')
+            ax1.set_xlabel('Штат')
+            ax1.set_ylabel('Стандартное отклонение температуры (°F)')
+            ax1.set_xticks(range(len(highest_variability)))
+            ax1.set_xticklabels(highest_variability['Station.State'], rotation=45)
+            
+            for i, bar in enumerate(bars1):
+                height = bar.get_height()
+                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                        f'{height:.2f}°F', ha='center', va='bottom')
+            
+            bars2 = ax2.bar(range(len(lowest_variability)), lowest_variability['Temperature_Std'], color='green', alpha=0.7)
+            ax2.set_title('3 штата с наименьшим разбросом температур')
+            ax2.set_xlabel('Штат')
+            ax2.set_ylabel('Стандартное отклонение температуры (°F)')
+            ax2.set_xticks(range(len(lowest_variability)))
+            ax2.set_xticklabels(lowest_variability['Station.State'], rotation=45)
+            
+            for i, bar in enumerate(bars2):
+                height = bar.get_height()
+                ax2.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                        f'{height:.2f}°F', ha='center', va='bottom')
+            
+            plt.tight_layout()
+            plt.show()
+            
+            print("\n3 штата с наибольшим разбросом температур:")
+            for _, row in highest_variability.iterrows():
+                print(f"{row['Station.State']}: σ = {row['Temperature_Std']:.2f}°F")
+            
+            print("\n3 штата с наименьшим разбросом температур:")
+            for _, row in lowest_variability.iterrows():
+                print(f"{row['Station.State']}: σ = {row['Temperature_Std']:.2f}°F")
+            
+            return {'highest_variability': highest_variability, 'lowest_variability': lowest_variability}
+        return None
+
+    def task3_windiest_state(self):
+        """Самый ветренный штат и его скорость ветра"""
+        print("\nЗадание 3: Самый ветренный штат")
+        
+        pipeline = self.csv_reader()
+        pipeline = self.data_extractor(pipeline, ['Station.State', 'Data.Wind.Speed'])
+        
+        all_data = []
+        for chunk in pipeline:
+            all_data.append(chunk)
+        
+        if all_data:
+            full_data = pd.concat(all_data)
+            
+            state_winds = full_data.groupby('Station.State')['Data.Wind.Speed'].agg(['mean', 'count']).reset_index()
+            state_winds = state_winds[state_winds['count'] >= 3]  # Фильтруем штаты с достаточным количеством данных
+            
+            windiest_state = state_winds.nlargest(1, 'mean').iloc[0]
+            
+            top_10_windy = state_winds.nlargest(10, 'mean')
+            
+            plt.figure(figsize=(12, 6))
+            bars = plt.bar(range(len(top_10_windy)), top_10_windy['mean'], 
+                          color=['red' if x == windiest_state['Station.State'] else 'skyblue' for x in top_10_windy['Station.State']],
+                          alpha=0.7)
+            
+            plt.title('Топ-10 самых ветреных штатов')
+            plt.xlabel('Штат')
+            plt.ylabel('Средняя скорость ветра (м/с)')
+            plt.xticks(range(len(top_10_windy)), top_10_windy['Station.State'], rotation=45)
+            
+            for i, bar in enumerate(bars):
+                height = bar.get_height()
+                plt.text(bar.get_x() + bar.get_width()/2., height + 0.05,
+                        f'{height:.2f} м/с', ha='center', va='bottom', 
+                        fontweight='bold' if top_10_windy.iloc[i]['Station.State'] == windiest_state['Station.State'] else 'normal')
+            
+            plt.tight_layout()
+            plt.show()
+            
+            print(f"\nСамый ветренный штат: {windiest_state['Station.State']}")
+            print(f"Средняя скорость ветра: {windiest_state['mean']:.2f} м/с")
+            print(f"Количество наблюдений: {windiest_state['count']}")
+            
+            return windiest_state
+        return None
+
+    def task4_wind_precipitation_correlation(self):
+        """Корреляция между скоростью ветра и осадками с использованием Parquet"""
+        print("\nДополнительное задание: Корреляция ветра и осадков (с использованием Parquet)")
+        
+        self.convert_to_parquet()
+        
+        if not os.path.exists(self.parquet_file):
+            print("Parquet файл не найден, невозможно выполнить анализ")
+            return None
+        
+        try:
+            columns_to_read = ['Data.Wind.Speed', 'Data.Precipitation', 'Station.State']
+            table = pq.read_table(self.parquet_file, columns=columns_to_read)
+            full_data = table.to_pandas()
+            
+            print(f"Загружено {len(full_data)} записей из Parquet файла")
+            
+            clean_data = full_data.dropna(subset=['Data.Wind.Speed', 'Data.Precipitation'])
+            print(f"После очистки: {len(clean_data)} записей")
+            
+            if len(clean_data) == 0:
+                print("Нет данных для анализа корреляции")
                 return None
             
-            # Группируем по городам выбранного штата
-            city_stats = state_data.groupby('Station.City').agg({
-                'Data.Precipitation': ['mean', 'std', 'count']
-            }).round(4)
+            overall_correlation = clean_data['Data.Wind.Speed'].corr(clean_data['Data.Precipitation'])
             
-            # Упрощаем мультииндекс
-            city_stats.columns = ['Mean_Precipitation', 'Std_Precipitation', 'Count']
-            city_stats = city_stats.reset_index()
-            
-            # Расчет доверительных интервалов
-            confidence = 0.95
-            results = []
-            for _, row in city_stats.iterrows():
-                if row['Count'] > 1 and not pd.isna(row['Std_Precipitation']) and row['Std_Precipitation'] > 0:
-                    mean = row['Mean_Precipitation']
-                    std = row['Std_Precipitation']
-                    n = row['Count']
-                    t_value = stats.t.ppf((1 + confidence) / 2, n - 1)
-                    margin_error = t_value * (std / np.sqrt(n))
-                    
-                    results.append({
-                        'City': row['Station.City'],
-                        'Mean': mean,
-                        'Std': std,
-                        'Margin_Error': margin_error,
-                        'CI_Lower': max(0, mean - margin_error),
-                        'CI_Upper': mean + margin_error,
-                        'Count': n
+            state_correlations = []
+            for state in clean_data['Station.State'].unique():
+                state_data = clean_data[clean_data['Station.State'] == state]
+                if len(state_data) >= 5:  # Минимум 5 наблюдений для корреляции
+                    corr = state_data['Data.Wind.Speed'].corr(state_data['Data.Precipitation'])
+                    state_correlations.append({
+                        'State': state,
+                        'Correlation': corr,
+                        'Count': len(state_data)
                     })
             
-            if results:
-                results_df = pd.DataFrame(results).sort_values('Mean', ascending=False)
-                
-                # Визуализация
-                plt.figure(figsize=(12, 6))
-                x_pos = np.arange(len(results_df))
-                
-                plt.bar(x_pos, results_df['Mean'], yerr=results_df['Margin_Error'], 
-                        capsize=5, alpha=0.7, color='lightcoral', label='Среднее ± погрешность')
-                
-                plt.xlabel('Город')
-                plt.ylabel('Среднее количество осадков')
-                plt.title(f'Доверительные интервалы для осадков по городам штата {state_name}')
-                plt.xticks(x_pos, results_df['City'], rotation=45, ha='right')
-                plt.legend()
-                plt.tight_layout()
-                plt.show()
-                
-                print(f"Города штата {state_name} с доверительными интервалами для осадков:")
-                for _, row in results_df.iterrows():
-                    print(f"{row['City']}: {row['Mean']:.3f} ± {row['Margin_Error']:.3f}")
-                
-                return results_df
-            else:
-                print("Недостаточно данных для расчета доверительных интервалов")
-                return None
-        return None
-
-    # Задание 3: Изменение температуры во времени для конкретного города
-    def task3_moving_average(self, city_name=None):
-        """Изменение температуры во времени со скользящим средним для выбранного города"""
-        print("\nЗадание 3: Изменение температуры во времени и скользящее среднее")
-        
-        # Получаем список городов
-        all_data = pd.concat([chunk for chunk in self.csv_reader()])
-        available_cities = sorted(all_data['Station.City'].unique().tolist())
-        
-        if city_name is None:
-            print("Доступные города:", available_cities)
-            city_name = input("Введите название города: ").strip()
-        
-        if city_name not in available_cities:
-            print(f"Город '{city_name}' не найден. Доступные города: {available_cities}")
-            return None
-        
-        pipeline = self.csv_reader()
-        pipeline = self.data_extractor(pipeline, ['Date.Full', 'Data.Temperature.Avg Temp', 'Station.City', 'Station.State'])
-        
-        # Собираем все данные
-        all_data = []
-        for chunk in pipeline:
-            all_data.append(chunk)
-        
-        if all_data:
-            full_data = pd.concat(all_data)
+            state_corr_df = pd.DataFrame(state_correlations).sort_values('Correlation', ascending=False)
             
-            # Фильтруем по выбранному городу
-            city_data = full_data[full_data['Station.City'] == city_name].copy()
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
             
-            if city_data.empty:
-                print(f"Нет данных для города {city_name}")
-                return None
+            ax1.scatter(clean_data['Data.Wind.Speed'], clean_data['Data.Precipitation'], alpha=0.5, s=10)
+            ax1.set_xlabel('Скорость ветра (м/с)')
+            ax1.set_ylabel('Осадки')
+            ax1.set_title(f'Корреляция ветра и осадков\nr = {overall_correlation:.3f}')
+            ax1.grid(True, alpha=0.3)
             
-            city_data['Date.Full'] = pd.to_datetime(city_data['Date.Full'])
-            city_data = city_data.sort_values('Date.Full')
-            city_data['Moving_Avg'] = city_data['Data.Temperature.Avg Temp'].rolling(window=3, min_periods=1).mean()
+            z = np.polyfit(clean_data['Data.Wind.Speed'], clean_data['Data.Precipitation'], 1)
+            p = np.poly1d(z)
+            x_range = np.linspace(clean_data['Data.Wind.Speed'].min(), clean_data['Data.Wind.Speed'].max(), 100)
+            ax1.plot(x_range, p(x_range), "r--", alpha=0.8, linewidth=2)
             
-            # Визуализация
-            plt.figure(figsize=(12, 6))
-            plt.plot(city_data['Date.Full'], city_data['Data.Temperature.Avg Temp'], 
-                    alpha=0.5, label='Ежедневная температура', color='lightblue', marker='o', markersize=6)
-            plt.plot(city_data['Date.Full'], city_data['Moving_Avg'], 
-                    linewidth=2, label='Скользящее среднее (3 дня)', color='red')
+            top_states = state_corr_df.head(10)
+            colors = ['green' if x > 0 else 'red' for x in top_states['Correlation']]
+            bars = ax2.bar(range(len(top_states)), top_states['Correlation'], color=colors, alpha=0.7)
+            ax2.set_xlabel('Штат')
+            ax2.set_ylabel('Корреляция')
+            ax2.set_title('Корреляция ветра и осадков по штатам (Топ-10)')
+            ax2.set_xticks(range(len(top_states)))
+            ax2.set_xticklabels(top_states['State'], rotation=45)
+            ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
             
-            state = city_data['Station.State'].iloc[0]
-            plt.title(f'Изменение температуры в {city_name}, {state}')
-            plt.xlabel('Дата')
-            plt.ylabel('Температура (°F)')
-            plt.legend()
-            plt.grid(True, alpha=0.3)
-            plt.xticks(rotation=45)
+            for i, bar in enumerate(bars):
+                height = bar.get_height()
+                ax2.text(bar.get_x() + bar.get_width()/2., height + (0.01 if height >= 0 else -0.03),
+                        f'{height:.3f}', ha='center', va='bottom' if height >= 0 else 'top')
+            
             plt.tight_layout()
             plt.show()
             
-            print(f"\nДетальный анализ для {city_name}:")
-            print(city_data[['Date.Full', 'Data.Temperature.Avg Temp', 'Moving_Avg']].round(1))
+            print(f"Общая корреляция между скоростью ветра и осадками: {overall_correlation:.3f}")
             
-            return city_data
-        return None
+            if abs(overall_correlation) > 0.7:
+                strength = "сильная"
+            elif abs(overall_correlation) > 0.5:
+                strength = "умеренная"
+            elif abs(overall_correlation) > 0.3:
+                strength = "слабая"
+            else:
+                strength = "очень слабая"
+            
+            direction = "положительная" if overall_correlation > 0 else "отрицательная"
+            print(f"Характер связи: {strength} {direction} корреляция")
+            
+            print("\nТоп-5 штатов с самой высокой корреляцией:")
+            for _, row in state_corr_df.head().iterrows():
+                print(f"{row['State']}: r = {row['Correlation']:.3f} (n={row['Count']})")
+            
+            print("\nТоп-5 штатов с самой низкой корреляцией:")
+            for _, row in state_corr_df.tail().iterrows():
+                print(f"{row['State']}: r = {row['Correlation']:.3f} (n={row['Count']})")
+            
+            return {
+                'overall_correlation': overall_correlation,
+                'state_correlations': state_corr_df,
+                'data_source': 'parquet'
+            }
+            
+        except Exception as e:
+            print(f"Ошибка при чтении Parquet файла: {e}")
+            return None
 
-    # Дополнительное задание: работа с Parquet
     def convert_to_parquet(self):
         """Конвертация CSV в Parquet"""
         if not os.path.exists(self.parquet_file):
@@ -264,13 +327,11 @@ class WeatherAnalyzer:
         """Сравнение скорости чтения CSV и Parquet"""
         print("\nСравнение скорости чтения:")
         
-        # Чтение CSV
         start_time = time.time()
         csv_data = pd.concat([chunk for chunk in self.csv_reader()])
         csv_time = time.time() - start_time
         print(f"CSV чтение: {csv_time:.4f} секунд")
         
-        # Чтение Parquet
         if os.path.exists(self.parquet_file):
             start_time = time.time()
             parquet_data = pq.read_table(self.parquet_file).to_pandas()
@@ -286,98 +347,6 @@ class WeatherAnalyzer:
             print("Parquet файл не найден")
         
         return csv_time, parquet_time if os.path.exists(self.parquet_file) else 0
-    
-    def parquet_additional_analysis(self):
-        """Дополнительный анализ с использованием Parquet - агрегированные данные"""
-        print("\nДополнительный анализ с Parquet:")
-        
-        if not os.path.exists(self.parquet_file):
-            print("Parquet файл не найден, пропускаем анализ")
-            return None
-            
-        # Чтение только нужных столбцов
-        columns_to_read = ['Station.State', 'Station.City', 'Data.Temperature.Avg Temp', 'Data.Precipitation']
-        table = pq.read_table(self.parquet_file, columns=columns_to_read)
-        data = table.to_pandas()
-        
-        # Агрегируем данные по городам (средние значения)
-        aggregated_data = data.groupby(['Station.City', 'Station.State']).agg({
-            'Data.Temperature.Avg Temp': 'mean',
-            'Data.Precipitation': 'mean'
-        }).reset_index()
-        
-        print(f"Агрегированные данные по {len(aggregated_data)} городам")
-        
-        # Анализ: температура vs осадки по штатам
-        plt.figure(figsize=(14, 8))
-        
-        # Получаем уникальные штаты
-        states = aggregated_data['Station.State'].unique()
-        colors = plt.cm.Set3(np.linspace(0, 1, len(states)))
-        color_map = {state: color for state, color in zip(states, colors)}
-        
-        # Создаем scatter plot для каждого штата
-        for state in states:
-            state_data = aggregated_data[aggregated_data['Station.State'] == state]
-            plt.scatter(state_data['Data.Temperature.Avg Temp'], 
-                       state_data['Data.Precipitation'], 
-                       alpha=0.7, 
-                       c=[color_map[state]], 
-                       label=state, 
-                       s=80,  # Размер точек
-                       edgecolors='black',  # Черная обводка
-                       linewidth=0.5)
-            
-            # Добавляем подписи для некоторых точек (крупнейшие города)
-            if len(state_data) > 0:
-                # Подписываем город с максимальными осадками
-                max_precip_city = state_data.loc[state_data['Data.Precipitation'].idxmax()]
-                plt.annotate(max_precip_city['Station.City'], 
-                            (max_precip_city['Data.Temperature.Avg Temp'], max_precip_city['Data.Precipitation']),
-                            xytext=(5, 5), textcoords='offset points', fontsize=8, alpha=0.8)
-        
-        plt.xlabel('Средняя температура (°F)', fontsize=12)
-        plt.ylabel('Средние осадки', fontsize=12)
-        plt.title('Зависимость между средней температурой и осадками по городам', fontsize=14, pad=20)
-        
-        # Размещаем легенду
-        n_states = len(states)
-        n_cols = 2 if n_states > 8 else 1
-        
-        plt.legend(bbox_to_anchor=(1.05, 1), 
-                   loc='upper left', 
-                   borderaxespad=0.,
-                   fontsize=10,
-                   ncol=n_cols,
-                   title='Штаты')
-        
-        plt.grid(True, alpha=0.3)
-        
-        # Добавляем линию тренда
-        z = np.polyfit(aggregated_data['Data.Temperature.Avg Temp'], aggregated_data['Data.Precipitation'], 1)
-        p = np.poly1d(z)
-        x_range = np.linspace(aggregated_data['Data.Temperature.Avg Temp'].min(), 
-                             aggregated_data['Data.Temperature.Avg Temp'].max(), 100)
-        plt.plot(x_range, p(x_range), "r--", alpha=0.8, linewidth=2, label='Линия тренда')
-        
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10, ncol=n_cols, title='Штаты')
-        plt.tight_layout()
-        plt.show()
-        
-        # Статистический анализ
-        correlation = aggregated_data['Data.Temperature.Avg Temp'].corr(aggregated_data['Data.Precipitation'])
-        print(f"Корреляция между средней температурой и осадками: {correlation:.3f}")
-        
-        # Анализ выбросов
-        print("\nГорода с самыми высокими осадками:")
-        top_precip = aggregated_data.nlargest(5, 'Data.Precipitation')[['Station.City', 'Station.State', 'Data.Precipitation']]
-        print(top_precip.round(3))
-        
-        print("\nГорода с самой высокой температурой:")
-        top_temp = aggregated_data.nlargest(5, 'Data.Temperature.Avg Temp')[['Station.City', 'Station.State', 'Data.Temperature.Avg Temp']]
-        print(top_temp.round(1))
-        
-        return aggregated_data
 
     def get_available_states(self):
         """Получить список доступных штатов"""
