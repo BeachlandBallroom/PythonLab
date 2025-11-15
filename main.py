@@ -6,7 +6,7 @@ def display_menu():
     print("1 - Задание 1: Локации с экстремальными температурами")
     print("2 - Задание 2: Штаты с разбросом температур")
     print("3 - Задание 3: Самый ветренный штат")
-    print("4 - Доп. задание: Корреляция ветра и осадков (Parquet)")
+    print("4 - Задание 4: Корреляция ветра и осадков")
     print("5 - Сравнение скорости CSV vs Parquet")
     print("0 - Выход")
 
@@ -24,25 +24,25 @@ def main():
             
         elif choice == '1':
             try:
-                result = analyzer.task1_extreme_temperatures()
+                result = analyzer.task1()
             except Exception as e:
                 print(f"{e}")
                 
         elif choice == '2':
             try:
-                result = analyzer.task2_temperature_variability()
+                result = analyzer.task2()
             except Exception as e:
                 print(f"{e}")
                 
         elif choice == '3':
             try:
-                result = analyzer.task3_windiest_state()
+                result = analyzer.task3()
             except Exception as e:
                 print(f"{e}")
                 
         elif choice == '4':
             try:
-                result = analyzer.task4_wind_precipitation_correlation()
+                result = analyzer.task4()
             except Exception as e:
                 print(f"{e}")
                 

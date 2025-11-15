@@ -20,25 +20,25 @@ class WeatherAnalyzer:
     def data_extractor(self, data_stream, columns):
         """Генератор для извлечения нужных столбцов"""
         for chunk in data_stream:
-            available_columns = [col for col in columns if col in chunk.columns]
-            if available_columns:
+            available_columns = chunk.columns.intersection(columns)
+            if not available_columns.empty:
                 yield chunk[available_columns]
+        #for chunk in data_stream:
+        #    available_columns = [col for col in columns if col in chunk.columns]
+        #    if available_columns:
+        #        yield chunk[available_columns]
 
-    def task1_extreme_temperatures(self):
+    def task1(self):
         """3 локации с самой высокой и 3 с самой низкой среднегодовой температурой"""
         print("Задание 1: Локации с экстремальными температурами")
         
         pipeline = self.csv_reader()
         pipeline = self.data_extractor(pipeline, ['Station.City', 'Station.State', 'Data.Temperature.Avg Temp'])
         
-        all_data = []
-        for chunk in pipeline:
-            all_data.append(chunk)
-        
-        if all_data:
-            full_data = pd.concat(all_data)
+        if pipeline:
+            conc = pd.concat(pipeline)
             
-            city_temps = full_data.groupby(['Station.City', 'Station.State'])['Data.Temperature.Avg Temp'].agg(['mean', 'count']).reset_index()
+            city_temps = conc.groupby(['Station.City', 'Station.State'])['Data.Temperature.Avg Temp'].agg(['mean', 'count']).reset_index()
             city_temps = city_temps[city_temps['count'] >= 3]
             
             highest_temps = city_temps.nlargest(3, 'mean')
@@ -84,24 +84,20 @@ class WeatherAnalyzer:
             return {'highest': highest_temps, 'lowest': lowest_temps}
         return None
 
-    def task2_temperature_variability(self):
+    def task2(self):
         """3 штата с самым высоким и 3 с самым низким разбросом среднемесячных температур"""
         print("\nЗадание 2: Штаты с наибольшим и наименьшим разбросом температур")
         
         pipeline = self.csv_reader()
         pipeline = self.data_extractor(pipeline, ['Station.State', 'Date.Full', 'Data.Temperature.Avg Temp'])
         
-        all_data = []
-        for chunk in pipeline:
-            all_data.append(chunk)
-        
-        if all_data:
-            full_data = pd.concat(all_data)
+        if pipeline:
+            conc = pd.concat(pipeline)
             
-            full_data['Date.Full'] = pd.to_datetime(full_data['Date.Full'])
-            full_data['Month'] = full_data['Date.Full'].dt.month
+            conc['Date.Full'] = pd.to_datetime(conc['Date.Full'])
+            conc['Month'] = conc['Date.Full'].dt.month
             
-            monthly_temps = full_data.groupby(['Station.State', 'Month'])['Data.Temperature.Avg Temp'].mean().reset_index()
+            monthly_temps = conc.groupby(['Station.State', 'Month'])['Data.Temperature.Avg Temp'].mean().reset_index()
             
             temp_variability = monthly_temps.groupby('Station.State')['Data.Temperature.Avg Temp'].std().reset_index()
             temp_variability.columns = ['Station.State', 'Temperature_Std']
@@ -150,21 +146,17 @@ class WeatherAnalyzer:
             return {'highest_variability': highest_variability, 'lowest_variability': lowest_variability}
         return None
 
-    def task3_windiest_state(self):
+    def task3(self):
         """Самый ветренный штат и его скорость ветра"""
         print("\nЗадание 3: Самый ветренный штат")
         
         pipeline = self.csv_reader()
         pipeline = self.data_extractor(pipeline, ['Station.State', 'Data.Wind.Speed'])
         
-        all_data = []
-        for chunk in pipeline:
-            all_data.append(chunk)
-        
-        if all_data:
-            full_data = pd.concat(all_data)
+        if pipeline:
+            conc = pd.concat(pipeline)
             
-            state_winds = full_data.groupby('Station.State')['Data.Wind.Speed'].agg(['mean', 'count']).reset_index()
+            state_winds = conc.groupby('Station.State')['Data.Wind.Speed'].agg(['mean', 'count']).reset_index()
             state_winds = state_winds[state_winds['count'] >= 3]
             
             windiest_state = state_winds.nlargest(1, 'mean').iloc[0]
@@ -197,58 +189,60 @@ class WeatherAnalyzer:
             return windiest_state
         return None
 
-    def task4_wind_precipitation_correlation(self):
+    def task4(self):
         """Корреляция между скоростью ветра и осадками с использованием Parquet"""
-        print("\nДополнительное задание: Корреляция ветра и осадков (с использованием Parquet)")
-        
+
         self.convert_to_parquet()
-        
+
         if not os.path.exists(self.parquet_file):
-            print("Parquet файл не найден, невозможно выполнить анализ")
+            print("Parquet файл не найден")
             return None
-        
+
         try:
             columns_to_read = ['Data.Wind.Speed', 'Data.Precipitation', 'Station.State']
             table = pq.read_table(self.parquet_file, columns=columns_to_read)
             full_data = table.to_pandas()
-            
-            print(f"Загружено {len(full_data)} записей из Parquet файла")
-            
+
             clean_data = full_data.dropna(subset=['Data.Wind.Speed', 'Data.Precipitation'])
-            print(f"После очистки: {len(clean_data)} записей")
-            
+
             if len(clean_data) == 0:
                 print("Нет данных для анализа корреляции")
                 return None
-            
+
             overall_correlation = clean_data['Data.Wind.Speed'].corr(clean_data['Data.Precipitation'])
-            
-            state_correlations = []
-            for state in clean_data['Station.State'].unique():
-                state_data = clean_data[clean_data['Station.State'] == state]
-                if len(state_data) >= 5:
-                    corr = state_data['Data.Wind.Speed'].corr(state_data['Data.Precipitation'])
-                    state_correlations.append({
-                        'State': state,
-                        'Correlation': corr,
-                        'Count': len(state_data)
-                    })
-            
-            state_corr_df = pd.DataFrame(state_correlations).sort_values('Correlation', ascending=False)
-            
+
+            correlation_frames = (
+                pd.DataFrame({
+                    'State': [state],
+                    'Correlation': [
+                        clean_data[clean_data['Station.State'] == state]['Data.Wind.Speed'].corr(
+                            clean_data[clean_data['Station.State'] == state]['Data.Precipitation']
+                        )
+                    ],
+                    'Count': [len(clean_data[clean_data['Station.State'] == state])]
+                })
+                for state in clean_data['Station.State'].unique()
+                if len(clean_data[clean_data['Station.State'] == state]) >= 5
+            )
+
+            state_corr_df = pd.concat(correlation_frames, ignore_index=True).sort_values('Correlation', ascending=False)
+
+            if state_corr_df.empty:
+                state_corr_df = pd.DataFrame(columns=['State', 'Correlation', 'Count'])
+
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-            
+
             ax1.scatter(clean_data['Data.Wind.Speed'], clean_data['Data.Precipitation'], alpha=0.5, s=10)
             ax1.set_xlabel('Скорость ветра (м/с)')
             ax1.set_ylabel('Осадки')
             ax1.set_title(f'Корреляция ветра и осадков\nr = {overall_correlation:.3f}')
             ax1.grid(True, alpha=0.3)
-            
+
             z = np.polyfit(clean_data['Data.Wind.Speed'], clean_data['Data.Precipitation'], 1)
             p = np.poly1d(z)
             x_range = np.linspace(clean_data['Data.Wind.Speed'].min(), clean_data['Data.Wind.Speed'].max(), 100)
             ax1.plot(x_range, p(x_range), "r--", alpha=0.8, linewidth=2)
-            
+
             top_states = state_corr_df.head(10)
             colors = ['green' if x > 0 else 'red' for x in top_states['Correlation']]
             bars = ax2.bar(range(len(top_states)), top_states['Correlation'], color=colors, alpha=0.7)
@@ -258,17 +252,17 @@ class WeatherAnalyzer:
             ax2.set_xticks(range(len(top_states)))
             ax2.set_xticklabels(top_states['State'], rotation=45)
             ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-            
+
             for i, bar in enumerate(bars):
                 height = bar.get_height()
                 ax2.text(bar.get_x() + bar.get_width()/2., height + (0.01 if height >= 0 else -0.03),
                         f'{height:.3f}', ha='center', va='bottom' if height >= 0 else 'top')
-            
+
             plt.tight_layout()
             plt.show()
-            
+
             print(f"Общая корреляция между скоростью ветра и осадками: {overall_correlation:.3f}")
-            
+
             if abs(overall_correlation) > 0.7:
                 strength = "сильная"
             elif abs(overall_correlation) > 0.5:
@@ -277,34 +271,34 @@ class WeatherAnalyzer:
                 strength = "слабая"
             else:
                 strength = "очень слабая"
-            
+
             direction = "положительная" if overall_correlation > 0 else "отрицательная"
             print(f"Характер связи: {strength} {direction} корреляция")
-            
+
             print("\nТоп-5 штатов с самой высокой корреляцией:")
             for _, row in state_corr_df.head().iterrows():
-                print(f"{row['State']}: r = {row['Correlation']:.3f} (n={row['Count']})")
-            
+                print(f"{row['State']}: r = {row['Correlation']:.3f} (n={int(row['Count'])})")
+
             print("\nТоп-5 штатов с самой низкой корреляцией:")
             for _, row in state_corr_df.tail().iterrows():
-                print(f"{row['State']}: r = {row['Correlation']:.3f} (n={row['Count']})")
-            
+                print(f"{row['State']}: r = {row['Correlation']:.3f} (n={int(row['Count'])})")
+
             return {
                 'overall_correlation': overall_correlation,
                 'state_correlations': state_corr_df,
                 'data_source': 'parquet'
             }
-            
+
         except Exception as e:
-            print(f"{e}")
+            print(f"Ошибка при чтении Parquet файла: {e}")
             return None
 
     def convert_to_parquet(self):
         """Конвертация CSV в Parquet"""
         if not os.path.exists(self.parquet_file):
             print("Конвертация CSV в Parquet...")
-            all_data = pd.concat([chunk for chunk in self.csv_reader(chunksize=5000)])
-            table = pa.Table.from_pandas(all_data)
+            chunk_frame = pd.concat([chunk for chunk in self.csv_reader(chunksize=5000)])
+            table = pa.Table.from_pandas(chunk_frame)
             pq.write_table(table, self.parquet_file)
             print("Конвертация завершена!")
     
@@ -323,11 +317,8 @@ class WeatherAnalyzer:
             parquet_time = time.time() - start_time
             print(f"Parquet чтение: {parquet_time:.4f} секунд")
             
-            if parquet_time > 0:
-                speed_ratio = csv_time / parquet_time
-                print(f"Parquet быстрее в {speed_ratio:.2f} раз")
-            else:
-                print("Parquet чтение слишком быстрое для точного сравнения")
+            speed_ratio = csv_time / parquet_time
+            print(f"Parquet быстрее в {speed_ratio:.2f} раз")
         else:
             print("Parquet файл не найден")
         
