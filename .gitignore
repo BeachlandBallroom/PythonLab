@@ -5,4 +5,8 @@ result.png
 corners_result.png
 asdas.py
 dog_images/
+dog_images_async/
 weather.parquet
+main1.py
+weather.csv
+dogs/app.log
