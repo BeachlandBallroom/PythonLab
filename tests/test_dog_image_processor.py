@@ -10,8 +10,7 @@ import io
 from dogs.dogs_lib.dog_image import ColorDogImage, GrayscaleDogImage
 from dogs.dogs_lib.dog_image_processor import DogImageProcessor
 
-
-class TestCatImageProcessorFileIO(unittest.TestCase):
+class TestDogImageProcessorFileIO(unittest.TestCase):
     def setUp(self):
         """
         Инициализаия данных для тестов.
@@ -24,13 +23,13 @@ class TestCatImageProcessorFileIO(unittest.TestCase):
         Проверка правильности сохранения в файл.
         """
         img_array = np.random.randint(0, 256, (32, 32, 3), dtype=np.uint8)
-        cat_img = ColorDogImage(img_array, "ссылка на кота", "кот")
+        dog_img = ColorDogImage(img_array, "ссылка на собаку", "собака")
 
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
             file_path = tmp.name
         os.unlink(file_path)
 
-        asyncio.run(self.processor.save_image(file_path, cat_img))
+        asyncio.run(self.processor.save_image(file_path, dog_img))
 
         self.assertTrue(os.path.exists(file_path))
         reloaded_pil = Image.open(file_path)
@@ -45,8 +44,8 @@ class TestCatImageProcessorFileIO(unittest.TestCase):
         Проверка сохранения в правильный файл и правильную структуру папок.
         """
         img = np.random.randint(0, 256, (24, 24, 3), dtype=np.uint8)
-        cat = ColorDogImage(img, "рандомная ссылка на кота", "рандомная_порода")
-        processed = [(0, cat, cat, cat)]
+        dog = ColorDogImage(img, "рандомная ссылка на кота", "рандомная_порода")
+        processed = [(0, dog, dog, dog)]
 
         asyncio.run(self.processor.save_images_async(processed))
 
@@ -64,12 +63,12 @@ class TestCatImageProcessorFileIO(unittest.TestCase):
                 self.assertIsInstance(img, Image.Image)
 
 
-class TestCatImageProcessorAPI(unittest.IsolatedAsyncioTestCase):
+class TestDogImageProcessorAPI(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp_dir = tempfile.mkdtemp()
         self.processor = DogImageProcessor(output_dir=self.temp_dir)
 
-    @patch('async_processing.implementation.cat_image_processor.aiohttp.ClientSession.get')
+    @patch('async_processing.implementation.dog_image_processor.aiohttp.ClientSession.get')
     async def test_download_data_calls_api_correctly(self, mock_get):
         """
         Тесттирование корректного обращения к API.
@@ -81,8 +80,8 @@ class TestCatImageProcessorAPI(unittest.IsolatedAsyncioTestCase):
 
         mock_response_json = AsyncMock()
         mock_response_json.json.return_value = [{
-            "url": "http://example.com/cat123.jpg",
-            "breeds": [{"name": "Scottish Fold"}]
+            "url": "http://example.com/dog123.jpg",
+            "breeds": [{"name": "Greyhound"}]
         }]
 
         mock_response_img = AsyncMock()
@@ -99,16 +98,16 @@ class TestCatImageProcessorAPI(unittest.IsolatedAsyncioTestCase):
         results = await self.processor.download_data(limit=1)
 
         self.assertEqual(len(results), 1)
-        index, cat_img = results[0]
+        index, dog_img = results[0]
         self.assertEqual(index, 0)
-        self.assertEqual(cat_img.url, "http://example.com/cat123.jpg")
-        self.assertEqual(cat_img.breed, "Scottish Fold")
-        self.assertEqual(cat_img.image.shape, (1, 1, 3))
+        self.assertEqual(dog_img.url, "http://example.com/dog123.jpg")
+        self.assertEqual(dog_img.breed, "Scottish Fold")
+        self.assertEqual(dog_img.image.shape, (1, 1, 3))
 
         self.assertEqual(mock_get.call_count, 2)
         json_call, img_call = mock_get.call_args_list
-        self.assertEqual(json_call[0][0], "https://api.thecatapi.com/v1/images/search")
-        self.assertEqual(img_call[0][0], "http://example.com/cat123.jpg")
+        self.assertEqual(json_call[0][0], "https://api.thedogapi.com/v1/images/search")
+        self.assertEqual(img_call[0][0], "http://example.com/dog123.jpg")
 
 if __name__ == '__main__':
     unittest.main()

@@ -10,7 +10,7 @@ from dogs.dogs_lib.dog_image import ColorDogImage, GrayscaleDogImage
 from dogs.dogs_lib.dog_image_processor import DogImageProcessor
 
 
-class TestCatImageGrayscale(unittest.TestCase):
+class TestGrayscaleDogImage(unittest.TestCase):
     def setUp(self):
         """
         Инициализаия данных для тестов.
@@ -47,10 +47,10 @@ class TestCatImageGrayscale(unittest.TestCase):
         self.assertEqual(edges.image.shape, (62, 62))
 
 
-class TestCatImageRGB(unittest.TestCase):
+class TestColorDogImage(unittest.TestCase):
     def setUp(self):
         """
-        Инициализаия данных для тестов.
+        Инициализация данных для тестов.
         """
         self.rgb_img_array = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
         self.gray_img_array = np.random.randint(0, 256, (64, 64), dtype=np.uint8)
